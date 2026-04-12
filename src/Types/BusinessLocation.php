@@ -2,12 +2,21 @@
 
 namespace EasyTel\Types;
 
+use EasyTel\Helper\Statics;
+use EasyTel\Telegram;
+use JSON\json;
+
+/**
+ * Contains information about the location of a Telegram Business account.
+ * @method self address(string $value) Address of the business
+ * @method self location(Location $value) <em>Optional</em>. Location of the business
+ */
 class BusinessLocation
 {
     public string $address;
     public Location $location;
-    
-    public function __construct(array $update)
+
+    public function __construct(array $update = [])
     {
         $objects = array_keys($update);
         $r = new \ReflectionClass(static::class);
@@ -15,9 +24,46 @@ class BusinessLocation
             if ($r->hasProperty($object)):
                 $prop = $r->getProperty($object);
                 $type = $prop->getType();
-                if (in_array($type, ['mixed', 'True', 'string', 'bool', 'int', 'float', 'array'])) $this->{$object} = $update[$object];
+                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
+                    $this->{$object} = $update[$object];
             endif;
         endforeach;
         if (isset($update['location'])) $this->location = new Location($update['location']);
+    }
+
+    /**
+     * Contains information about the location of a Telegram Business account.
+     * @param string|null $address Address of the business
+     * @param Location|null $location <em>Optional</em>. Location of the business
+     */
+    public static function make(string $address = null, Location $location = null): self
+    {
+        $args = get_defined_vars();
+        $updates = array_filter($args, fn($v) => isset($v));
+        return new self($updates);
+    }
+
+    public function __call(string $name, array $arguments)
+    {
+        $this->{$name} = array_shift($arguments);
+        return $this;
+    }
+
+    protected function _output(int $type = Telegram::OUTPUT_JSON): object|array|string
+    {
+        $output = [];
+        $r = new \ReflectionClass(static::class);
+        foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
+            $name = $property->getName();
+            if (isset($this->{$name})):
+                $value = $property->getValue($this);
+                $property_type = $property->getType();
+                if ($property_type == 'object')
+                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
+                else
+                    $output[$name] = $value;
+            endif;
+        endforeach;
+        return Statics::output($output, $type);
     }
 }

@@ -3,9 +3,13 @@
 namespace EasyTel\Methods;
 
 use EasyTel\Handler\Request;
+use EasyTel\Handler\Result;
+
 
 /**
+ * @method CreateInvoiceLink business_connection_id(string $value) Unique identifier of the business connection on behalf of which the link will be created. For payments in <a href="https://t.me/BotNews/90">Telegram Stars</a> only.
  * @method CreateInvoiceLink provider_token(string $value) Payment provider token, obtained via <a href="https://t.me/botfather">@BotFather</a>. Pass an empty string for payments in <a href="https://t.me/BotNews/90">Telegram Stars</a>.
+ * @method CreateInvoiceLink subscription_period(int $value) The number of seconds the subscription will be active for before the next payment. The currency must be set to “XTR” (Telegram Stars) if the parameter is used. Currently, it must always be 2592000 (30 days) if specified. Any number of subscriptions can be active for a given bot at the same time, including multiple concurrent subscriptions from the same user. Subscription price must no exceed 10000 Telegram Stars.
  * @method CreateInvoiceLink max_tip_amount(int $value) The maximum accepted amount for tips in the <em>smallest units</em> of the currency (integer, <strong>not</strong> float/double). For example, for a maximum tip of <code>US$ 1.45</code> pass <code>max_tip_amount = 145</code>. See the <em>exp</em> parameter in <a href="/bots/payments/currencies.json">currencies.json</a>, it shows the number of digits past the decimal point for each currency (2 for the majority of currencies). Defaults to 0. Not supported for payments in <a href="https://t.me/BotNews/90">Telegram Stars</a>.
  * @method CreateInvoiceLink suggested_tip_amounts(string  $value) A JSON-serialized array of suggested amounts of tips in the <em>smallest units</em> of the currency (integer, <strong>not</strong> float/double). At most 4 suggested tip amounts can be specified. The suggested tip amounts must be positive, passed in a strictly increased order and must not exceed <em>max_tip_amount</em>.
  * @method CreateInvoiceLink provider_data(string $value) JSON-serialized data about the invoice, which will be shared with the payment provider. A detailed description of required fields should be provided by the payment provider.
@@ -31,7 +35,9 @@ class CreateInvoiceLink
     private string $payload;
     private string $currency;
     private string  $prices;
+    private string $business_connection_id;
     private string $provider_token;
+    private int $subscription_period;
     private int $max_tip_amount;
     private string  $suggested_tip_amounts;
     private string $provider_data;
@@ -59,33 +65,29 @@ class CreateInvoiceLink
 
     public function __call(string $name, array $arguments)
     {
-        return $this->return($name, array_shift($arguments));
+        $this->{$name} = array_shift($arguments);
+        $this->_returned = true;
+        return $this;
     }
 
-    public function _send(): mixed
+    public function _result(): Result
     {
         $parameters = [];
         foreach ($this as $key => $value):
-            if (isset($this->{$key}) && !in_array($key, ['_request', '_sent', '_returned'])) $parameters[$key] = $value;
+            if (isset($this->{$key}) && !in_array($key, ['_request', '_result'])):
+                if (gettype($value) == 'object')
+                    $parameters[$key] = (fn() => ($this->_output()))->bindTo($value, $value)();
+                else
+                    $parameters[$key] = $value;
+            endif;
         endforeach;
         $r = new \ReflectionClass($this);
         $this->_sent = true;
         return $this->_request->send(lcfirst($r->getShortName()), $parameters);
     }
 
-    private function return($function, $value)
-    {
-        $class = new (static::class)($this->_request, $this->title, $this->description, $this->payload, $this->currency, $this->prices);
-            $this->{$function} = $value;
-        foreach ($this as $key => $value):
-            if (!in_array($key, ['_sent', '_returned'])) $class->{$key} = $value;
-        endforeach;
-        $this->_returned = true;
-        return $class;
-    }
-
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_send();
+        if (!$this->_returned && !$this->_sent) $this->_result();
     }
 }

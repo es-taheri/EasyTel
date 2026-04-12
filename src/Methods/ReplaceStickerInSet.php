@@ -3,7 +3,9 @@
 namespace EasyTel\Methods;
 
 use EasyTel\Handler\Request;
+use EasyTel\Handler\Result;
 
+use EasyTel\Types\InputSticker;
 
 class ReplaceStickerInSet
 {
@@ -13,9 +15,9 @@ class ReplaceStickerInSet
     private int $user_id;
     private string $name;
     private string $old_sticker;
-    private string $sticker;
+    private InputSticker $sticker;
 
-    public function __construct(Request $request, int $user_id, string $name, string $old_sticker, string $sticker)
+    public function __construct(Request $request, int $user_id, string $name, string $old_sticker, InputSticker $sticker)
     {
         $this->_request = $request;
         $this->user_id = $user_id;
@@ -26,33 +28,29 @@ class ReplaceStickerInSet
 
     public function __call(string $name, array $arguments)
     {
-        return $this->return($name, array_shift($arguments));
+        $this->{$name} = array_shift($arguments);
+        $this->_returned = true;
+        return $this;
     }
 
-    public function _send(): mixed
+    public function _result(): Result
     {
         $parameters = [];
         foreach ($this as $key => $value):
-            if (isset($this->{$key}) && !in_array($key, ['_request', '_sent', '_returned'])) $parameters[$key] = $value;
+            if (isset($this->{$key}) && !in_array($key, ['_request', '_result'])):
+                if (gettype($value) == 'object')
+                    $parameters[$key] = (fn() => ($this->_output()))->bindTo($value, $value)();
+                else
+                    $parameters[$key] = $value;
+            endif;
         endforeach;
         $r = new \ReflectionClass($this);
         $this->_sent = true;
         return $this->_request->send(lcfirst($r->getShortName()), $parameters);
     }
 
-    private function return($function, $value)
-    {
-        $class = new (static::class)($this->_request, $this->user_id, $this->name, $this->old_sticker, $this->sticker);
-            $this->{$function} = $value;
-        foreach ($this as $key => $value):
-            if (!in_array($key, ['_sent', '_returned'])) $class->{$key} = $value;
-        endforeach;
-        $this->_returned = true;
-        return $class;
-    }
-
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_send();
+        if (!$this->_returned && !$this->_sent) $this->_result();
     }
 }

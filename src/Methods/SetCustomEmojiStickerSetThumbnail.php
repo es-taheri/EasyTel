@@ -3,6 +3,8 @@
 namespace EasyTel\Methods;
 
 use EasyTel\Handler\Request;
+use EasyTel\Handler\Result;
+
 
 /**
  * @method SetCustomEmojiStickerSetThumbnail custom_emoji_id(string $value) Custom emoji identifier of a sticker from the sticker set; pass an empty string to drop the thumbnail and use the first sticker as the thumbnail.
@@ -23,33 +25,29 @@ class SetCustomEmojiStickerSetThumbnail
 
     public function __call(string $name, array $arguments)
     {
-        return $this->return($name, array_shift($arguments));
+        $this->{$name} = array_shift($arguments);
+        $this->_returned = true;
+        return $this;
     }
 
-    public function _send(): mixed
+    public function _result(): Result
     {
         $parameters = [];
         foreach ($this as $key => $value):
-            if (isset($this->{$key}) && !in_array($key, ['_request', '_sent', '_returned'])) $parameters[$key] = $value;
+            if (isset($this->{$key}) && !in_array($key, ['_request', '_result'])):
+                if (gettype($value) == 'object')
+                    $parameters[$key] = (fn() => ($this->_output()))->bindTo($value, $value)();
+                else
+                    $parameters[$key] = $value;
+            endif;
         endforeach;
         $r = new \ReflectionClass($this);
         $this->_sent = true;
         return $this->_request->send(lcfirst($r->getShortName()), $parameters);
     }
 
-    private function return($function, $value)
-    {
-        $class = new (static::class)($this->_request, $this->name);
-            $this->{$function} = $value;
-        foreach ($this as $key => $value):
-            if (!in_array($key, ['_sent', '_returned'])) $class->{$key} = $value;
-        endforeach;
-        $this->_returned = true;
-        return $class;
-    }
-
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_send();
+        if (!$this->_returned && !$this->_sent) $this->_result();
     }
 }

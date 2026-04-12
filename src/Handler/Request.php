@@ -2,10 +2,14 @@
 
 namespace EasyTel\Handler;
 
+use EasyTel\Helper\Statics;
 use EasyTel\Telegram;
 use GuzzleHttp\Client;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Exception\RequestException;
-use JSON\json;
+use GuzzleHttp\Exception\ServerException;
 use Psr\Http\Message\ResponseInterface;
 
 class Request
@@ -23,7 +27,7 @@ class Request
         $this->output = $output;
     }
 
-    public function send(string $method, array $parameters)
+    public function send(string $method, array $parameters): Result
     {
         $promise = $this->guzzle->requestAsync($this->method, "$method", [
             'form_params' => $parameters
@@ -31,7 +35,7 @@ class Request
         return $promise->then(
             function (ResponseInterface $res) {
                 $body = $res->getBody();
-                return $this->output([
+                return new Result([
                     'success' => true,
                     'code' => $res->getStatusCode(),
                     'header' => $res->getHeaders(),
@@ -39,27 +43,25 @@ class Request
                     'size' => $body->getSize()
                 ]);
             },
-            function (RequestException $err) {
-                $response = [
-                    'success' => false,
-                    'code' => $err->getCode(),
-                    'error' => $err->getMessage()
-                ];
-                if ($err->hasResponse())
-                    $response['response'] = $err->getResponse()->getBody()->getContents();
-                else
-                    $response['response'] = null;
-                return $this->output($response);
+            function (ClientException|ServerException|RequestException|GuzzleException|ConnectException $err) {
+                if ($err instanceof ConnectException) {
+                    $return = [
+                        'success' => false,
+                        'code' => $err->getCode(),
+                        'error' => $err->getMessage(),
+                        'response' => null
+                    ];
+                } else {
+                    $return = [
+                        'success' => false,
+                        'code' => $err->getCode(),
+                        'error' => $err->getMessage()
+                    ];
+                    $resp = $err->getResponse();
+                    $return['response'] = is_null($resp) ? null : $resp->getBody()->getContents();
+                }
+                return new Result($return);
             }
         )->wait();
-    }
-
-    private function output(array $data)
-    {
-        return match ($this->output) {
-            Telegram::OUTPUT_JSON => json::_out($data, true),
-            Telegram::OUTPUT_OBJECT => json::_in(json::_out($data)),
-            default => $data,
-        };
     }
 }

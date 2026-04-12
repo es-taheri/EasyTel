@@ -4,13 +4,15 @@ namespace EasyTel;
 
 use EasyTel\Handler\Request;
 use GuzzleHttp\Client;
+use EasyTel\Handler\Result;
+
 class Webhook extends Request
 {
     public function __construct(
         Client $guzzle, string $method = 'POST', $output = Telegram::OUTPUT_OBJECT
     )
     {
-        parent::__construct($guzzle,$method,$output);
+        parent::__construct($guzzle, $method, $output);
     }
 
     /**
@@ -25,13 +27,13 @@ class Webhook extends Request
      * @param string $allowed_updates
      * @param bool $drop_pending_updates
      * @param string $secret_token
-     * @return mixed
+     * @return Result
      * @link https://core.telegram.org/bots/api#setwebhook
      */
     public function setWebhook(
         string $url, mixed $certificate = null, string $ip_address = null, int $max_connections = null,
         string $allowed_updates = null, bool $drop_pending_updates = null, string $secret_token = null
-    ): mixed
+    ): Result
     {
         return parent::send(__FUNCTION__, get_defined_vars());
     }
@@ -43,7 +45,7 @@ class Webhook extends Request
      * @return mixed
      * @link https://core.telegram.org/bots/api#deletewebhook
      */
-    public function deleteWebhook(bool $drop_pending_updates = null): mixed
+    public function deleteWebhook(bool $drop_pending_updates = null): Result
     {
         return parent::send(__FUNCTION__, get_defined_vars());
     }
@@ -55,7 +57,7 @@ class Webhook extends Request
      * @return mixed
      * @link https://core.telegram.org/bots/api#getwebhookinfo
      */
-    public function getWebhookInfo(): mixed
+    public function getWebhookInfo(): Result
     {
         return parent::send(__FUNCTION__, get_defined_vars());
     }
