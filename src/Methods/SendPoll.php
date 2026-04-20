@@ -7,6 +7,9 @@ use EasyTel\Handler\Result;
 
 use EasyTel\Types\ReplyParameters;
 use EasyTel\Types\InlineKeyboardMarkup;
+use EasyTel\Types\ReplyKeyboardMarkup;
+use EasyTel\Types\ReplyKeyboardRemove;
+use EasyTel\Types\ForceReply;
 /**
  * @method SendPoll business_connection_id(string $value) Unique identifier of the business connection on behalf of which the message will be sent
  * @method SendPoll message_thread_id(int $value) Unique identifier for the target message thread (topic) of a forum; for forum supergroups and private chats of bots with forum topic mode enabled only
@@ -34,7 +37,7 @@ use EasyTel\Types\InlineKeyboardMarkup;
  * @method SendPoll allow_paid_broadcast(bool $value) Pass <em>True</em> to allow up to 1000 messages per second, ignoring <a href="https://core.telegram.org/bots/faq#how-can-i-message-all-of-my-bot-39s-subscribers-at-once">broadcasting limits</a> for a fee of 0.1 Telegram Stars per message. The relevant Stars will be withdrawn from the bot&#39;s balance
  * @method SendPoll message_effect_id(string $value) Unique identifier of the message effect to be added to the message; for private chats only
  * @method SendPoll reply_parameters(ReplyParameters $value) Description of the message to reply to
- * @method SendPoll reply_markup(InlineKeyboardMarkup $value) Additional interface options. A JSON-serialized object for an <a href="/bots/features#inline-keyboards">inline keyboard</a>, <a href="/bots/features#keyboards">custom reply keyboard</a>, instructions to remove a reply keyboard or to force a reply from the user
+ * @method SendPoll reply_markup(InlineKeyboardMarkup|ReplyKeyboardMarkup|ReplyKeyboardRemove|ForceReply $value) Additional interface options. A JSON-serialized object for an <a href="/bots/features#inline-keyboards">inline keyboard</a>, <a href="/bots/features#keyboards">custom reply keyboard</a>, instructions to remove a reply keyboard or to force a reply from the user
  */
 class SendPoll
 {
@@ -70,7 +73,7 @@ class SendPoll
     private bool $allow_paid_broadcast;
     private string $message_effect_id;
     private ReplyParameters $reply_parameters;
-    private InlineKeyboardMarkup $reply_markup;
+    private InlineKeyboardMarkup|ReplyKeyboardMarkup|ReplyKeyboardRemove|ForceReply $reply_markup;
 
     public function __construct(Request $request, int|string $chat_id, string $question, string  $options)
     {

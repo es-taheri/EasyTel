@@ -8,6 +8,9 @@ use EasyTel\Handler\Result;
 use EasyTel\Types\SuggestedPostParameters;
 use EasyTel\Types\ReplyParameters;
 use EasyTel\Types\InlineKeyboardMarkup;
+use EasyTel\Types\ReplyKeyboardMarkup;
+use EasyTel\Types\ReplyKeyboardRemove;
+use EasyTel\Types\ForceReply;
 /**
  * @method SendContact business_connection_id(string $value) Unique identifier of the business connection on behalf of which the message will be sent
  * @method SendContact message_thread_id(int $value) Unique identifier for the target message thread (topic) of a forum; for forum supergroups and private chats of bots with forum topic mode enabled only
@@ -20,7 +23,7 @@ use EasyTel\Types\InlineKeyboardMarkup;
  * @method SendContact message_effect_id(string $value) Unique identifier of the message effect to be added to the message; for private chats only
  * @method SendContact suggested_post_parameters(SuggestedPostParameters $value) A JSON-serialized object containing the parameters of the suggested post to send; for direct messages chats only. If the message is sent as a reply to another suggested post, then that suggested post is automatically declined.
  * @method SendContact reply_parameters(ReplyParameters $value) Description of the message to reply to
- * @method SendContact reply_markup(InlineKeyboardMarkup $value) Additional interface options. A JSON-serialized object for an <a href="/bots/features#inline-keyboards">inline keyboard</a>, <a href="/bots/features#keyboards">custom reply keyboard</a>, instructions to remove a reply keyboard or to force a reply from the user
+ * @method SendContact reply_markup(InlineKeyboardMarkup|ReplyKeyboardMarkup|ReplyKeyboardRemove|ForceReply $value) Additional interface options. A JSON-serialized object for an <a href="/bots/features#inline-keyboards">inline keyboard</a>, <a href="/bots/features#keyboards">custom reply keyboard</a>, instructions to remove a reply keyboard or to force a reply from the user
  */
 class SendContact
 {
@@ -41,7 +44,7 @@ class SendContact
     private string $message_effect_id;
     private SuggestedPostParameters $suggested_post_parameters;
     private ReplyParameters $reply_parameters;
-    private InlineKeyboardMarkup $reply_markup;
+    private InlineKeyboardMarkup|ReplyKeyboardMarkup|ReplyKeyboardRemove|ForceReply $reply_markup;
 
     public function __construct(Request $request, int|string $chat_id, string $phone_number, string $first_name)
     {
