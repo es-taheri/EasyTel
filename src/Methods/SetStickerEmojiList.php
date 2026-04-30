@@ -10,7 +10,6 @@ use EasyTel\Handler\Result;
 class SetStickerEmojiList
 {
     private Request $_request;
-    private bool $_returned = false;
     private bool $_sent = false;
     private string $sticker;
     private string  $emoji_list;
@@ -25,7 +24,6 @@ class SetStickerEmojiList
     public function __call(string $name, array $arguments)
     {
         $this->{$name} = array_shift($arguments);
-        $this->_returned = true;
         return $this;
     }
 
@@ -47,6 +45,6 @@ class SetStickerEmojiList
 
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_result();
+        if (!$this->_sent) $this->_result();
     }
 }

@@ -10,7 +10,6 @@ use EasyTel\Handler\Result;
 class ReopenGeneralForumTopic
 {
     private Request $_request;
-    private bool $_returned = false;
     private bool $_sent = false;
     private int|string $chat_id;
 
@@ -23,7 +22,6 @@ class ReopenGeneralForumTopic
     public function __call(string $name, array $arguments)
     {
         $this->{$name} = array_shift($arguments);
-        $this->_returned = true;
         return $this;
     }
 
@@ -45,6 +43,6 @@ class ReopenGeneralForumTopic
 
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_result();
+        if (!$this->_sent) $this->_result();
     }
 }

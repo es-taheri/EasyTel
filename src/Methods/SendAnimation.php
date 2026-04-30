@@ -35,7 +35,6 @@ use EasyTel\Types\ForceReply;
 class SendAnimation
 {
     private Request $_request;
-    private bool $_returned = false;
     private bool $_sent = false;
     private int|string $chat_id;
     private mixed $animation;
@@ -69,7 +68,6 @@ class SendAnimation
     public function __call(string $name, array $arguments)
     {
         $this->{$name} = array_shift($arguments);
-        $this->_returned = true;
         return $this;
     }
 
@@ -91,6 +89,6 @@ class SendAnimation
 
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_result();
+        if (!$this->_sent) $this->_result();
     }
 }

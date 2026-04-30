@@ -15,7 +15,6 @@ use EasyTel\Types\InputStoryContent;
 class EditStory
 {
     private Request $_request;
-    private bool $_returned = false;
     private bool $_sent = false;
     private string $business_connection_id;
     private int $story_id;
@@ -36,7 +35,6 @@ class EditStory
     public function __call(string $name, array $arguments)
     {
         $this->{$name} = array_shift($arguments);
-        $this->_returned = true;
         return $this;
     }
 
@@ -58,6 +56,6 @@ class EditStory
 
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_result();
+        if (!$this->_sent) $this->_result();
     }
 }

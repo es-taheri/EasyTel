@@ -14,7 +14,6 @@ use EasyTel\Handler\Result;
 class SendMessageDraft
 {
     private Request $_request;
-    private bool $_returned = false;
     private bool $_sent = false;
     private int $chat_id;
     private int $draft_id;
@@ -34,7 +33,6 @@ class SendMessageDraft
     public function __call(string $name, array $arguments)
     {
         $this->{$name} = array_shift($arguments);
-        $this->_returned = true;
         return $this;
     }
 
@@ -56,6 +54,6 @@ class SendMessageDraft
 
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_result();
+        if (!$this->_sent) $this->_result();
     }
 }

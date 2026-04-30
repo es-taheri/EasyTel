@@ -12,7 +12,6 @@ use EasyTel\Handler\Result;
 class VerifyUser
 {
     private Request $_request;
-    private bool $_returned = false;
     private bool $_sent = false;
     private int $user_id;
     private string $custom_description;
@@ -26,7 +25,6 @@ class VerifyUser
     public function __call(string $name, array $arguments)
     {
         $this->{$name} = array_shift($arguments);
-        $this->_returned = true;
         return $this;
     }
 
@@ -48,6 +46,6 @@ class VerifyUser
 
     public function __destruct()
     {
-        if (!$this->_returned && !$this->_sent) $this->_result();
+        if (!$this->_sent) $this->_result();
     }
 }
