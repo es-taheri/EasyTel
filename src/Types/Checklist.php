@@ -9,46 +9,41 @@ use JSON\json;
 /**
  * Describes a checklist.
  * @method self title(string $value) Title of the checklist
- * @method self title_entities(array $value) <em>Optional</em>. Special entities that appear in the checklist title
- * @method self tasks(array $value) List of tasks in the checklist
- * @method self others_can_add_tasks(True $value) <em>Optional</em>. <em>True</em>, if users other than the creator of the list can add tasks to the list
- * @method self others_can_mark_tasks_as_done(True $value) <em>Optional</em>. <em>True</em>, if users other than the creator of the list can mark tasks as done or not done
+ * @method self title_entities(MessageEntity[] $value) <em>Optional</em>. Special entities that appear in the checklist title
+ * @method self tasks(ChecklistTask[] $value) List of tasks in the checklist
+ * @method self others_can_add_tasks(bool $value) <em>Optional</em>. <em>True</em>, if users other than the creator of the list can add tasks to the list
+ * @method self others_can_mark_tasks_as_done(bool $value) <em>Optional</em>. <em>True</em>, if users other than the creator of the list can mark tasks as done or not done
  */
 class Checklist
 {
+    /** @var string */
     public string $title;
+    /** @var MessageEntity[] */
     public array $title_entities;
+    /** @var ChecklistTask[] */
     public array $tasks;
-    public True $others_can_add_tasks;
-    public True $others_can_mark_tasks_as_done;
+    /** @var bool */
+    public bool $others_can_add_tasks;
+    /** @var bool */
+    public bool $others_can_mark_tasks_as_done;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        
+        Statics::hydrate($this, $update);
     }
 
     /**
      * Describes a checklist.
      * @param string|null $title Title of the checklist
-     * @param array|null $title_entities <em>Optional</em>. Special entities that appear in the checklist title
-     * @param array|null $tasks List of tasks in the checklist
-     * @param True|null $others_can_add_tasks <em>Optional</em>. <em>True</em>, if users other than the creator of the list can add tasks to the list
-     * @param True|null $others_can_mark_tasks_as_done <em>Optional</em>. <em>True</em>, if users other than the creator of the list can mark tasks as done or not done
+     * @param MessageEntity[]|null $title_entities <em>Optional</em>. Special entities that appear in the checklist title
+     * @param ChecklistTask[]|null $tasks List of tasks in the checklist
+     * @param bool|null $others_can_add_tasks <em>Optional</em>. <em>True</em>, if users other than the creator of the list can add tasks to the list
+     * @param bool|null $others_can_mark_tasks_as_done <em>Optional</em>. <em>True</em>, if users other than the creator of the list can mark tasks as done or not done
      */
-    public static function make(string $title = null, array $title_entities = null, array $tasks = null, True $others_can_add_tasks = null, True $others_can_mark_tasks_as_done = null): self
+    public static function make(string $title = null, array $title_entities = null, array $tasks = null, bool $others_can_add_tasks = null, bool $others_can_mark_tasks_as_done = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -62,16 +57,37 @@ class Checklist
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

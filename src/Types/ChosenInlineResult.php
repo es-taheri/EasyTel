@@ -16,26 +16,20 @@ use JSON\json;
  */
 class ChosenInlineResult
 {
+    /** @var string */
     public string $result_id;
+    /** @var User */
     public User $from;
+    /** @var Location */
     public Location $location;
+    /** @var string */
     public string $inline_message_id;
+    /** @var string */
     public string $query;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['from'])) $this->from = new User($update['from']);
-        if (isset($update['location'])) $this->location = new Location($update['location']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -49,7 +43,7 @@ class ChosenInlineResult
     public static function make(string $result_id = null, User $from = null, Location $location = null, string $inline_message_id = null, string $query = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -63,16 +57,37 @@ class ChosenInlineResult
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

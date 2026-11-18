@@ -14,33 +14,31 @@ use JSON\json;
  * @method self username(string $value) <em>Optional</em>. Username, for private chats, supergroups and channels if available
  * @method self first_name(string $value) <em>Optional</em>. First name of the other party in a private chat
  * @method self last_name(string $value) <em>Optional</em>. Last name of the other party in a private chat
- * @method self is_forum(True $value) <em>Optional</em>. <em>True</em>, if the supergroup chat is a forum (has <a href="https://telegram.org/blog/topics-in-groups-collectible-usernames#topics-in-groups">topics</a> enabled)
- * @method self is_direct_messages(True $value) <em>Optional</em>. <em>True</em>, if the chat is the direct messages chat of a channel
+ * @method self is_forum(bool $value) <em>Optional</em>. <em>True</em>, if the supergroup chat is a forum (has <a href="https://telegram.org/blog/topics-in-groups-collectible-usernames#topics-in-groups">topics</a> enabled)
+ * @method self is_direct_messages(bool $value) <em>Optional</em>. <em>True</em>, if the chat is the direct messages chat of a channel
  */
 class Chat
 {
+    /** @var int */
     public int $id;
+    /** @var string */
     public string $type;
+    /** @var string */
     public string $title;
+    /** @var string */
     public string $username;
+    /** @var string */
     public string $first_name;
+    /** @var string */
     public string $last_name;
-    public True $is_forum;
-    public True $is_direct_messages;
+    /** @var bool */
+    public bool $is_forum;
+    /** @var bool */
+    public bool $is_direct_messages;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -51,13 +49,13 @@ class Chat
      * @param string|null $username <em>Optional</em>. Username, for private chats, supergroups and channels if available
      * @param string|null $first_name <em>Optional</em>. First name of the other party in a private chat
      * @param string|null $last_name <em>Optional</em>. Last name of the other party in a private chat
-     * @param True|null $is_forum <em>Optional</em>. <em>True</em>, if the supergroup chat is a forum (has <a href="https://telegram.org/blog/topics-in-groups-collectible-usernames#topics-in-groups">topics</a> enabled)
-     * @param True|null $is_direct_messages <em>Optional</em>. <em>True</em>, if the chat is the direct messages chat of a channel
+     * @param bool|null $is_forum <em>Optional</em>. <em>True</em>, if the supergroup chat is a forum (has <a href="https://telegram.org/blog/topics-in-groups-collectible-usernames#topics-in-groups">topics</a> enabled)
+     * @param bool|null $is_direct_messages <em>Optional</em>. <em>True</em>, if the chat is the direct messages chat of a channel
      */
-    public static function make(int $id = null, string $type = null, string $title = null, string $username = null, string $first_name = null, string $last_name = null, True $is_forum = null, True $is_direct_messages = null): self
+    public static function make(int $id = null, string $type = null, string $title = null, string $username = null, string $first_name = null, string $last_name = null, bool $is_forum = null, bool $is_direct_messages = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -71,16 +69,37 @@ class Chat
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

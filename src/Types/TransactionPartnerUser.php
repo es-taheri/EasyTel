@@ -14,39 +14,37 @@ use JSON\json;
  * @method self affiliate(AffiliateInfo $value) <em>Optional</em>. Information about the affiliate that received a commission via this transaction. Can be available only for “invoice_payment” and “paid_media_payment” transactions.
  * @method self invoice_payload(string $value) <em>Optional</em>. Bot-specified invoice payload. Can be available only for “invoice_payment” transactions.
  * @method self subscription_period(int $value) <em>Optional</em>. The duration of the paid subscription. Can be available only for “invoice_payment” transactions.
- * @method self paid_media(array $value) <em>Optional</em>. Information about the paid media bought by the user; for “paid_media_payment” transactions only
+ * @method self paid_media(PaidMedia[] $value) <em>Optional</em>. Information about the paid media bought by the user; for “paid_media_payment” transactions only
  * @method self paid_media_payload(string $value) <em>Optional</em>. Bot-specified paid media payload. Can be available only for “paid_media_payment” transactions.
  * @method self gift(Gift $value) <em>Optional</em>. The gift sent to the user by the bot; for “gift_purchase” transactions only
  * @method self premium_subscription_duration(int $value) <em>Optional</em>. Number of months the gifted Telegram Premium subscription will be active for; for “premium_purchase” transactions only
  */
 class TransactionPartnerUser
 {
+    /** @var string */
     public string $type;
+    /** @var string */
     public string $transaction_type;
+    /** @var User */
     public User $user;
+    /** @var AffiliateInfo */
     public AffiliateInfo $affiliate;
+    /** @var string */
     public string $invoice_payload;
+    /** @var int */
     public int $subscription_period;
+    /** @var PaidMedia[] */
     public array $paid_media;
+    /** @var string */
     public string $paid_media_payload;
+    /** @var Gift */
     public Gift $gift;
+    /** @var int */
     public int $premium_subscription_duration;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['user'])) $this->user = new User($update['user']);
-        if (isset($update['affiliate'])) $this->affiliate = new AffiliateInfo($update['affiliate']);
-        if (isset($update['gift'])) $this->gift = new Gift($update['gift']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -57,7 +55,7 @@ class TransactionPartnerUser
      * @param AffiliateInfo|null $affiliate <em>Optional</em>. Information about the affiliate that received a commission via this transaction. Can be available only for “invoice_payment” and “paid_media_payment” transactions.
      * @param string|null $invoice_payload <em>Optional</em>. Bot-specified invoice payload. Can be available only for “invoice_payment” transactions.
      * @param int|null $subscription_period <em>Optional</em>. The duration of the paid subscription. Can be available only for “invoice_payment” transactions.
-     * @param array|null $paid_media <em>Optional</em>. Information about the paid media bought by the user; for “paid_media_payment” transactions only
+     * @param PaidMedia[]|null $paid_media <em>Optional</em>. Information about the paid media bought by the user; for “paid_media_payment” transactions only
      * @param string|null $paid_media_payload <em>Optional</em>. Bot-specified paid media payload. Can be available only for “paid_media_payment” transactions.
      * @param Gift|null $gift <em>Optional</em>. The gift sent to the user by the bot; for “gift_purchase” transactions only
      * @param int|null $premium_subscription_duration <em>Optional</em>. Number of months the gifted Telegram Premium subscription will be active for; for “premium_purchase” transactions only
@@ -65,7 +63,7 @@ class TransactionPartnerUser
     public static function make(string $type = null, string $transaction_type = null, User $user = null, AffiliateInfo $affiliate = null, string $invoice_payload = null, int $subscription_period = null, array $paid_media = null, string $paid_media_payload = null, Gift $gift = null, int $premium_subscription_duration = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -79,16 +77,37 @@ class TransactionPartnerUser
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

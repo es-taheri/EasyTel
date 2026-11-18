@@ -15,14 +15,16 @@ use JSON\json;
  * @method self animation(Animation $value) <em>Optional</em>. Message is an animation, information about the animation
  * @method self audio(Audio $value) <em>Optional</em>. Message is an audio file, information about the file
  * @method self document(Document $value) <em>Optional</em>. Message is a general file, information about the file
+ * @method self live_photo(LivePhoto $value) <em>Optional</em>. Message is a live photo, information about the live photo
  * @method self paid_media(PaidMediaInfo $value) <em>Optional</em>. Message contains paid media; information about the paid media
- * @method self photo(array $value) <em>Optional</em>. Message is a photo, available sizes of the photo
+ * @method self photo(PhotoSize[] $value) <em>Optional</em>. Message is a photo, available sizes of the photo
  * @method self sticker(Sticker $value) <em>Optional</em>. Message is a sticker, information about the sticker
  * @method self story(Story $value) <em>Optional</em>. Message is a forwarded story
  * @method self video(Video $value) <em>Optional</em>. Message is a video, information about the video
  * @method self video_note(VideoNote $value) <em>Optional</em>. Message is a <a href="https://telegram.org/blog/video-messages-and-telescope">video note</a>, information about the video message
  * @method self voice(Voice $value) <em>Optional</em>. Message is a voice message, information about the file
- * @method self has_media_spoiler(True $value) <em>Optional</em>. <em>True</em>, if the message media is covered by a spoiler animation
+ * @method self widget(Widget $value) <em>Optional</em>. Message is an HTML widget, information about the widget
+ * @method self has_media_spoiler(bool $value) <em>Optional</em>. <em>True</em>, if the message media is covered by a spoiler animation
  * @method self checklist(Checklist $value) <em>Optional</em>. Message is a checklist
  * @method self contact(Contact $value) <em>Optional</em>. Message is a shared contact, information about the contact
  * @method self dice(Dice $value) <em>Optional</em>. Message is a dice with random value
@@ -36,66 +38,64 @@ use JSON\json;
  */
 class ExternalReplyInfo
 {
+    /** @var MessageOrigin */
     public MessageOrigin $origin;
+    /** @var Chat */
     public Chat $chat;
+    /** @var int */
     public int $message_id;
+    /** @var LinkPreviewOptions */
     public LinkPreviewOptions $link_preview_options;
+    /** @var Animation */
     public Animation $animation;
+    /** @var Audio */
     public Audio $audio;
+    /** @var Document */
     public Document $document;
+    /** @var LivePhoto */
+    public LivePhoto $live_photo;
+    /** @var PaidMediaInfo */
     public PaidMediaInfo $paid_media;
+    /** @var PhotoSize[] */
     public array $photo;
+    /** @var Sticker */
     public Sticker $sticker;
+    /** @var Story */
     public Story $story;
+    /** @var Video */
     public Video $video;
+    /** @var VideoNote */
     public VideoNote $video_note;
+    /** @var Voice */
     public Voice $voice;
-    public True $has_media_spoiler;
+    /** @var Widget */
+    public Widget $widget;
+    /** @var bool */
+    public bool $has_media_spoiler;
+    /** @var Checklist */
     public Checklist $checklist;
+    /** @var Contact */
     public Contact $contact;
+    /** @var Dice */
     public Dice $dice;
+    /** @var Game */
     public Game $game;
+    /** @var Giveaway */
     public Giveaway $giveaway;
+    /** @var GiveawayWinners */
     public GiveawayWinners $giveaway_winners;
+    /** @var Invoice */
     public Invoice $invoice;
+    /** @var Location */
     public Location $location;
+    /** @var Poll */
     public Poll $poll;
+    /** @var Venue */
     public Venue $venue;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['origin'])) $this->origin = new MessageOrigin($update['origin']);
-        if (isset($update['chat'])) $this->chat = new Chat($update['chat']);
-        if (isset($update['link_preview_options'])) $this->link_preview_options = new LinkPreviewOptions($update['link_preview_options']);
-        if (isset($update['animation'])) $this->animation = new Animation($update['animation']);
-        if (isset($update['audio'])) $this->audio = new Audio($update['audio']);
-        if (isset($update['document'])) $this->document = new Document($update['document']);
-        if (isset($update['paid_media'])) $this->paid_media = new PaidMediaInfo($update['paid_media']);
-        if (isset($update['sticker'])) $this->sticker = new Sticker($update['sticker']);
-        if (isset($update['story'])) $this->story = new Story($update['story']);
-        if (isset($update['video'])) $this->video = new Video($update['video']);
-        if (isset($update['video_note'])) $this->video_note = new VideoNote($update['video_note']);
-        if (isset($update['voice'])) $this->voice = new Voice($update['voice']);
-        if (isset($update['checklist'])) $this->checklist = new Checklist($update['checklist']);
-        if (isset($update['contact'])) $this->contact = new Contact($update['contact']);
-        if (isset($update['dice'])) $this->dice = new Dice($update['dice']);
-        if (isset($update['game'])) $this->game = new Game($update['game']);
-        if (isset($update['giveaway'])) $this->giveaway = new Giveaway($update['giveaway']);
-        if (isset($update['giveaway_winners'])) $this->giveaway_winners = new GiveawayWinners($update['giveaway_winners']);
-        if (isset($update['invoice'])) $this->invoice = new Invoice($update['invoice']);
-        if (isset($update['location'])) $this->location = new Location($update['location']);
-        if (isset($update['poll'])) $this->poll = new Poll($update['poll']);
-        if (isset($update['venue'])) $this->venue = new Venue($update['venue']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -107,14 +107,16 @@ class ExternalReplyInfo
      * @param Animation|null $animation <em>Optional</em>. Message is an animation, information about the animation
      * @param Audio|null $audio <em>Optional</em>. Message is an audio file, information about the file
      * @param Document|null $document <em>Optional</em>. Message is a general file, information about the file
+     * @param LivePhoto|null $live_photo <em>Optional</em>. Message is a live photo, information about the live photo
      * @param PaidMediaInfo|null $paid_media <em>Optional</em>. Message contains paid media; information about the paid media
-     * @param array|null $photo <em>Optional</em>. Message is a photo, available sizes of the photo
+     * @param PhotoSize[]|null $photo <em>Optional</em>. Message is a photo, available sizes of the photo
      * @param Sticker|null $sticker <em>Optional</em>. Message is a sticker, information about the sticker
      * @param Story|null $story <em>Optional</em>. Message is a forwarded story
      * @param Video|null $video <em>Optional</em>. Message is a video, information about the video
      * @param VideoNote|null $video_note <em>Optional</em>. Message is a <a href="https://telegram.org/blog/video-messages-and-telescope">video note</a>, information about the video message
      * @param Voice|null $voice <em>Optional</em>. Message is a voice message, information about the file
-     * @param True|null $has_media_spoiler <em>Optional</em>. <em>True</em>, if the message media is covered by a spoiler animation
+     * @param Widget|null $widget <em>Optional</em>. Message is an HTML widget, information about the widget
+     * @param bool|null $has_media_spoiler <em>Optional</em>. <em>True</em>, if the message media is covered by a spoiler animation
      * @param Checklist|null $checklist <em>Optional</em>. Message is a checklist
      * @param Contact|null $contact <em>Optional</em>. Message is a shared contact, information about the contact
      * @param Dice|null $dice <em>Optional</em>. Message is a dice with random value
@@ -126,10 +128,10 @@ class ExternalReplyInfo
      * @param Poll|null $poll <em>Optional</em>. Message is a native poll, information about the poll
      * @param Venue|null $venue <em>Optional</em>. Message is a venue, information about the venue
      */
-    public static function make(MessageOrigin $origin = null, Chat $chat = null, int $message_id = null, LinkPreviewOptions $link_preview_options = null, Animation $animation = null, Audio $audio = null, Document $document = null, PaidMediaInfo $paid_media = null, array $photo = null, Sticker $sticker = null, Story $story = null, Video $video = null, VideoNote $video_note = null, Voice $voice = null, True $has_media_spoiler = null, Checklist $checklist = null, Contact $contact = null, Dice $dice = null, Game $game = null, Giveaway $giveaway = null, GiveawayWinners $giveaway_winners = null, Invoice $invoice = null, Location $location = null, Poll $poll = null, Venue $venue = null): self
+    public static function make(MessageOrigin $origin = null, Chat $chat = null, int $message_id = null, LinkPreviewOptions $link_preview_options = null, Animation $animation = null, Audio $audio = null, Document $document = null, LivePhoto $live_photo = null, PaidMediaInfo $paid_media = null, array $photo = null, Sticker $sticker = null, Story $story = null, Video $video = null, VideoNote $video_note = null, Voice $voice = null, Widget $widget = null, bool $has_media_spoiler = null, Checklist $checklist = null, Contact $contact = null, Dice $dice = null, Game $game = null, Giveaway $giveaway = null, GiveawayWinners $giveaway_winners = null, Invoice $invoice = null, Location $location = null, Poll $poll = null, Venue $venue = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -143,16 +145,37 @@ class ExternalReplyInfo
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

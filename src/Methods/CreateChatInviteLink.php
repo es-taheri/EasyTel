@@ -5,23 +5,35 @@ namespace EasyTel\Methods;
 use EasyTel\Handler\Request;
 use EasyTel\Handler\Result;
 
-
 /**
+ * Use this method to create an additional invite link for a chat. The bot must be an administrator in the chat for this to work and must have the appropriate administrator rights. The link can be revoked using the method <a href="https://core.telegram.org/bots/api#revokechatinvitelink">revokeChatInviteLink</a>. Returns the new invite link as <a href="https://core.telegram.org/bots/api#chatinvitelink">ChatInviteLink</a> object.
+ *
  * @method CreateChatInviteLink name(string $value) Invite link name; 0-32 characters
  * @method CreateChatInviteLink expire_date(int $value) Point in time (Unix timestamp) when the link will expire
  * @method CreateChatInviteLink member_limit(int $value) The maximum number of users that can be members of the chat simultaneously after joining the chat via this invite link; 1-99999
- * @method CreateChatInviteLink creates_join_request(bool $value) <em>True</em>, if users joining the chat via the link need to be approved by chat administrators. If <em>True</em>, <em>member_limit</em> can&#39;t be specified
+ * @method CreateChatInviteLink creates_join_request(bool $value) <em>True</em>, if users joining the chat via the link need to be approved by chat administrators. If <em>True</em>, <em>member_limit</em> can't be specified.
+ *
+ * @link https://core.telegram.org/bots/api#createchatinvitelink
  */
 class CreateChatInviteLink
 {
     private Request $_request;
     private bool $_sent = false;
+    /** @var int|string Unique identifier for the target chat or username of the target channel in the format <code>@username</code> */
     private int|string $chat_id;
+    /** @var string Invite link name; 0-32 characters */
     private string $name;
+    /** @var int Point in time (Unix timestamp) when the link will expire */
     private int $expire_date;
+    /** @var int The maximum number of users that can be members of the chat simultaneously after joining the chat via this invite link; 1-99999 */
     private int $member_limit;
+    /** @var bool <em>True</em>, if users joining the chat via the link need to be approved by chat administrators. If <em>True</em>, <em>member_limit</em> can't be specified. */
     private bool $creates_join_request;
 
+    /**
+     * @param Request $request
+     * @param int|string $chat_id Unique identifier for the target chat or username of the target channel in the format <code>@username</code>
+     */
     public function __construct(Request $request, int|string $chat_id)
     {
         $this->_request = $request;
@@ -30,28 +42,65 @@ class CreateChatInviteLink
 
     public function __call(string $name, array $arguments)
     {
-        $this->{$name} = array_shift($arguments);
+        if (!property_exists($this, $name)) {
+            $this->_sent = true; // never send a half built request from __destruct()
+            throw new \BadMethodCallException(
+                sprintf('Unknown parameter "%s" for %s.', $name, static::class)
+            );
+        }
+
+        if ($arguments === []) {
+            $this->_sent = true;
+            throw new \InvalidArgumentException(
+                sprintf('Parameter "%s" of %s requires a value.', $name, static::class)
+            );
+        }
+
+        try {
+            $this->{$name} = array_shift($arguments);
+        } catch (\Throwable $e) {
+            $this->_sent = true; // the value did not fit: the request is invalid
+            throw $e;
+        }
+
         return $this;
     }
 
     public function _result(): Result
     {
         $parameters = [];
-        foreach ($this as $key => $value):
-            if (isset($this->{$key}) && !in_array($key, ['_request', '_result'])):
-                if (gettype($value) == 'object')
-                    $parameters[$key] = (fn() => ($this->_output()))->bindTo($value, $value)();
-                else
-                    $parameters[$key] = $value;
-            endif;
-        endforeach;
-        $r = new \ReflectionClass($this);
+
+        foreach ($this as $key => $value) {
+            if (str_starts_with($key, '_') || !isset($this->{$key})) {
+                continue;
+            }
+
+            if (is_object($value)) {
+                $parameters[$key] = method_exists($value, '_output')
+                    ? (fn() => $this->_output())->bindTo($value, $value)()
+                    : $value;
+            } else {
+                $parameters[$key] = $value;
+            }
+        }
+
+        $reflection = new \ReflectionClass($this);
         $this->_sent = true;
-        return $this->_request->send(lcfirst($r->getShortName()), $parameters);
+
+        return $this->_request->send(lcfirst($reflection->getShortName()), $parameters);
     }
 
     public function __destruct()
     {
-        if (!$this->_sent) $this->_result();
+        if ($this->_sent)
+            return;
+
+        // Fire-and-forget call from the destructor must never raise inside
+        // shutdown; the explicit _result() call is the error-reporting path.
+        try {
+            $this->_result();
+        } catch (\Throwable) {
+            // Ignored on purpose.
+        }
     }
 }

@@ -16,33 +16,32 @@ use JSON\json;
  * @method self last_error_message(string $value) <em>Optional</em>. Error message in human-readable format for the most recent error that happened when trying to deliver an update via webhook
  * @method self last_synchronization_error_date(int $value) <em>Optional</em>. Unix time of the most recent error that happened when trying to synchronize available updates with Telegram datacenters
  * @method self max_connections(int $value) <em>Optional</em>. The maximum allowed number of simultaneous HTTPS connections to the webhook for update delivery
- * @method self allowed_updates(array $value) <em>Optional</em>. A list of update types the bot is subscribed to. Defaults to all update types except <em>chat_member</em>
+ * @method self allowed_updates(string[] $value) <em>Optional</em>. A list of update types the bot is subscribed to. Defaults to all update types except <em>chat_member</em>, <em>message_reaction</em>, and <em>message_reaction_count</em>.
  */
 class WebhookInfo
 {
+    /** @var string */
     public string $url;
+    /** @var bool */
     public bool $has_custom_certificate;
+    /** @var int */
     public int $pending_update_count;
+    /** @var string */
     public string $ip_address;
+    /** @var int */
     public int $last_error_date;
+    /** @var string */
     public string $last_error_message;
+    /** @var int */
     public int $last_synchronization_error_date;
+    /** @var int */
     public int $max_connections;
+    /** @var string[] */
     public array $allowed_updates;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -55,12 +54,12 @@ class WebhookInfo
      * @param string|null $last_error_message <em>Optional</em>. Error message in human-readable format for the most recent error that happened when trying to deliver an update via webhook
      * @param int|null $last_synchronization_error_date <em>Optional</em>. Unix time of the most recent error that happened when trying to synchronize available updates with Telegram datacenters
      * @param int|null $max_connections <em>Optional</em>. The maximum allowed number of simultaneous HTTPS connections to the webhook for update delivery
-     * @param array|null $allowed_updates <em>Optional</em>. A list of update types the bot is subscribed to. Defaults to all update types except <em>chat_member</em>
+     * @param string[]|null $allowed_updates <em>Optional</em>. A list of update types the bot is subscribed to. Defaults to all update types except <em>chat_member</em>, <em>message_reaction</em>, and <em>message_reaction_count</em>.
      */
     public static function make(string $url = null, bool $has_custom_certificate = null, int $pending_update_count = null, string $ip_address = null, int $last_error_date = null, string $last_error_message = null, int $last_synchronization_error_date = null, int $max_connections = null, array $allowed_updates = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -74,16 +73,37 @@ class WebhookInfo
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

@@ -12,39 +12,39 @@ use JSON\json;
  * @method self owned_gift_id(string $value) <em>Optional</em>. Unique identifier of the received gift for the bot; only present for gifts received on behalf of business accounts
  * @method self convert_star_count(int $value) <em>Optional</em>. Number of Telegram Stars that can be claimed by the receiver by converting the gift; omitted if conversion to Telegram Stars is impossible
  * @method self prepaid_upgrade_star_count(int $value) <em>Optional</em>. Number of Telegram Stars that were prepaid for the ability to upgrade the gift
- * @method self is_upgrade_separate(True $value) <em>Optional</em>. <em>True</em>, if the gift&#39;s upgrade was purchased after the gift was sent
- * @method self can_be_upgraded(True $value) <em>Optional</em>. <em>True</em>, if the gift can be upgraded to a unique gift
+ * @method self is_upgrade_separate(bool $value) <em>Optional</em>. <em>True</em>, if the gift's upgrade was purchased after the gift was sent
+ * @method self can_be_upgraded(bool $value) <em>Optional</em>. <em>True</em>, if the gift can be upgraded to a unique gift
  * @method self text(string $value) <em>Optional</em>. Text of the message that was added to the gift
- * @method self entities(array $value) <em>Optional</em>. Special entities that appear in the text
- * @method self is_private(True $value) <em>Optional</em>. <em>True</em>, if the sender and gift text are shown only to the gift receiver; otherwise, everyone will be able to see them
- * @method self unique_gift_number(int $value) <em>Optional</em>. Unique number reserved for this gift when upgraded. See the <em>number</em> field in <a href="https://core.telegram.org/bots/api#uniquegift">UniqueGift</a>
+ * @method self entities(MessageEntity[] $value) <em>Optional</em>. Special entities that appear in the text
+ * @method self is_private(bool $value) <em>Optional</em>. <em>True</em>, if the sender and gift text are shown only to the gift receiver; otherwise, everyone will be able to see them
+ * @method self unique_gift_number(int $value) <em>Optional</em>. Unique number reserved for this gift when upgraded. See the <em>number</em> field in <a href="https://core.telegram.org/bots/api#uniquegift">UniqueGift</a>.
  */
 class GiftInfo
 {
+    /** @var Gift */
     public Gift $gift;
+    /** @var string */
     public string $owned_gift_id;
+    /** @var int */
     public int $convert_star_count;
+    /** @var int */
     public int $prepaid_upgrade_star_count;
-    public True $is_upgrade_separate;
-    public True $can_be_upgraded;
+    /** @var bool */
+    public bool $is_upgrade_separate;
+    /** @var bool */
+    public bool $can_be_upgraded;
+    /** @var string */
     public string $text;
+    /** @var MessageEntity[] */
     public array $entities;
-    public True $is_private;
+    /** @var bool */
+    public bool $is_private;
+    /** @var int */
     public int $unique_gift_number;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['gift'])) $this->gift = new Gift($update['gift']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -53,17 +53,17 @@ class GiftInfo
      * @param string|null $owned_gift_id <em>Optional</em>. Unique identifier of the received gift for the bot; only present for gifts received on behalf of business accounts
      * @param int|null $convert_star_count <em>Optional</em>. Number of Telegram Stars that can be claimed by the receiver by converting the gift; omitted if conversion to Telegram Stars is impossible
      * @param int|null $prepaid_upgrade_star_count <em>Optional</em>. Number of Telegram Stars that were prepaid for the ability to upgrade the gift
-     * @param True|null $is_upgrade_separate <em>Optional</em>. <em>True</em>, if the gift&#39;s upgrade was purchased after the gift was sent
-     * @param True|null $can_be_upgraded <em>Optional</em>. <em>True</em>, if the gift can be upgraded to a unique gift
+     * @param bool|null $is_upgrade_separate <em>Optional</em>. <em>True</em>, if the gift's upgrade was purchased after the gift was sent
+     * @param bool|null $can_be_upgraded <em>Optional</em>. <em>True</em>, if the gift can be upgraded to a unique gift
      * @param string|null $text <em>Optional</em>. Text of the message that was added to the gift
-     * @param array|null $entities <em>Optional</em>. Special entities that appear in the text
-     * @param True|null $is_private <em>Optional</em>. <em>True</em>, if the sender and gift text are shown only to the gift receiver; otherwise, everyone will be able to see them
-     * @param int|null $unique_gift_number <em>Optional</em>. Unique number reserved for this gift when upgraded. See the <em>number</em> field in <a href="https://core.telegram.org/bots/api#uniquegift">UniqueGift</a>
+     * @param MessageEntity[]|null $entities <em>Optional</em>. Special entities that appear in the text
+     * @param bool|null $is_private <em>Optional</em>. <em>True</em>, if the sender and gift text are shown only to the gift receiver; otherwise, everyone will be able to see them
+     * @param int|null $unique_gift_number <em>Optional</em>. Unique number reserved for this gift when upgraded. See the <em>number</em> field in <a href="https://core.telegram.org/bots/api#uniquegift">UniqueGift</a>.
      */
-    public static function make(Gift $gift = null, string $owned_gift_id = null, int $convert_star_count = null, int $prepaid_upgrade_star_count = null, True $is_upgrade_separate = null, True $can_be_upgraded = null, string $text = null, array $entities = null, True $is_private = null, int $unique_gift_number = null): self
+    public static function make(Gift $gift = null, string $owned_gift_id = null, int $convert_star_count = null, int $prepaid_upgrade_star_count = null, bool $is_upgrade_separate = null, bool $can_be_upgraded = null, string $text = null, array $entities = null, bool $is_private = null, int $unique_gift_number = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -77,16 +77,37 @@ class GiftInfo
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

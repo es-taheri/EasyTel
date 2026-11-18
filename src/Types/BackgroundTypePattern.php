@@ -12,32 +12,27 @@ use JSON\json;
  * @method self document(Document $value) Document with the pattern
  * @method self fill(BackgroundFill $value) The background fill that is combined with the pattern
  * @method self intensity(int $value) Intensity of the pattern when it is shown above the filled background; 0-100
- * @method self is_inverted(True $value) <em>Optional</em>. <em>True</em>, if the background fill must be applied only to the pattern itself. All other pixels are black in this case. For dark themes only
- * @method self is_moving(True $value) <em>Optional</em>. <em>True</em>, if the background moves slightly when the device is tilted
+ * @method self is_inverted(bool $value) <em>Optional</em>. <em>True</em>, if the background fill must be applied only to the pattern itself. All other pixels are black in this case. For dark themes only.
+ * @method self is_moving(bool $value) <em>Optional</em>. <em>True</em>, if the background moves slightly when the device is tilted
  */
 class BackgroundTypePattern
 {
+    /** @var string */
     public string $type;
+    /** @var Document */
     public Document $document;
+    /** @var BackgroundFill */
     public BackgroundFill $fill;
+    /** @var int */
     public int $intensity;
-    public True $is_inverted;
-    public True $is_moving;
+    /** @var bool */
+    public bool $is_inverted;
+    /** @var bool */
+    public bool $is_moving;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['document'])) $this->document = new Document($update['document']);
-        if (isset($update['fill'])) $this->fill = new BackgroundFill($update['fill']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -46,13 +41,13 @@ class BackgroundTypePattern
      * @param Document|null $document Document with the pattern
      * @param BackgroundFill|null $fill The background fill that is combined with the pattern
      * @param int|null $intensity Intensity of the pattern when it is shown above the filled background; 0-100
-     * @param True|null $is_inverted <em>Optional</em>. <em>True</em>, if the background fill must be applied only to the pattern itself. All other pixels are black in this case. For dark themes only
-     * @param True|null $is_moving <em>Optional</em>. <em>True</em>, if the background moves slightly when the device is tilted
+     * @param bool|null $is_inverted <em>Optional</em>. <em>True</em>, if the background fill must be applied only to the pattern itself. All other pixels are black in this case. For dark themes only.
+     * @param bool|null $is_moving <em>Optional</em>. <em>True</em>, if the background moves slightly when the device is tilted
      */
-    public static function make(string $type = null, Document $document = null, BackgroundFill $fill = null, int $intensity = null, True $is_inverted = null, True $is_moving = null): self
+    public static function make(string $type = null, Document $document = null, BackgroundFill $fill = null, int $intensity = null, bool $is_inverted = null, bool $is_moving = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -66,16 +61,37 @@ class BackgroundTypePattern
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

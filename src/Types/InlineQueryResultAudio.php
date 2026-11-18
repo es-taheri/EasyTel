@@ -14,7 +14,7 @@ use JSON\json;
  * @method self title(string $value) Title
  * @method self caption(string $value) <em>Optional</em>. Caption, 0-1024 characters after entities parsing
  * @method self parse_mode(string $value) <em>Optional</em>. Mode for parsing entities in the audio caption. See <a href="https://core.telegram.org/bots/api#formatting-options">formatting options</a> for more details.
- * @method self caption_entities(array $value) <em>Optional</em>. List of special entities that appear in the caption, which can be specified instead of <em>parse_mode</em>
+ * @method self caption_entities(MessageEntity[] $value) <em>Optional</em>. List of special entities that appear in the caption, which can be specified instead of <em>parse_mode</em>
  * @method self performer(string $value) <em>Optional</em>. Performer
  * @method self audio_duration(int $value) <em>Optional</em>. Audio duration in seconds
  * @method self reply_markup(InlineKeyboardMarkup $value) <em>Optional</em>. <a href="/bots/features#inline-keyboards">Inline keyboard</a> attached to the message
@@ -22,32 +22,32 @@ use JSON\json;
  */
 class InlineQueryResultAudio
 {
+    /** @var string */
     public string $type;
+    /** @var string */
     public string $id;
+    /** @var string */
     public string $audio_url;
+    /** @var string */
     public string $title;
+    /** @var string */
     public string $caption;
+    /** @var string */
     public string $parse_mode;
+    /** @var MessageEntity[] */
     public array $caption_entities;
+    /** @var string */
     public string $performer;
+    /** @var int */
     public int $audio_duration;
+    /** @var InlineKeyboardMarkup */
     public InlineKeyboardMarkup $reply_markup;
+    /** @var InputMessageContent */
     public InputMessageContent $input_message_content;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['reply_markup'])) $this->reply_markup = new InlineKeyboardMarkup($update['reply_markup']);
-        if (isset($update['input_message_content'])) $this->input_message_content = new InputMessageContent($update['input_message_content']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -58,7 +58,7 @@ class InlineQueryResultAudio
      * @param string|null $title Title
      * @param string|null $caption <em>Optional</em>. Caption, 0-1024 characters after entities parsing
      * @param string|null $parse_mode <em>Optional</em>. Mode for parsing entities in the audio caption. See <a href="https://core.telegram.org/bots/api#formatting-options">formatting options</a> for more details.
-     * @param array|null $caption_entities <em>Optional</em>. List of special entities that appear in the caption, which can be specified instead of <em>parse_mode</em>
+     * @param MessageEntity[]|null $caption_entities <em>Optional</em>. List of special entities that appear in the caption, which can be specified instead of <em>parse_mode</em>
      * @param string|null $performer <em>Optional</em>. Performer
      * @param int|null $audio_duration <em>Optional</em>. Audio duration in seconds
      * @param InlineKeyboardMarkup|null $reply_markup <em>Optional</em>. <a href="/bots/features#inline-keyboards">Inline keyboard</a> attached to the message
@@ -67,7 +67,7 @@ class InlineQueryResultAudio
     public static function make(string $type = null, string $id = null, string $audio_url = null, string $title = null, string $caption = null, string $parse_mode = null, array $caption_entities = null, string $performer = null, int $audio_duration = null, InlineKeyboardMarkup $reply_markup = null, InputMessageContent $input_message_content = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -81,16 +81,37 @@ class InlineQueryResultAudio
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

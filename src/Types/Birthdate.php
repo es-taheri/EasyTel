@@ -8,41 +8,34 @@ use JSON\json;
 
 /**
  * Describes the birthdate of a user.
- * @method self day(int $value) Day of the user&#39;s birth; 1-31
- * @method self month(int $value) Month of the user&#39;s birth; 1-12
- * @method self year(int $value) <em>Optional</em>. Year of the user&#39;s birth
+ * @method self day(int $value) Day of the user's birth; 1-31
+ * @method self month(int $value) Month of the user's birth; 1-12
+ * @method self year(int $value) <em>Optional</em>. Year of the user's birth
  */
 class Birthdate
 {
+    /** @var int */
     public int $day;
+    /** @var int */
     public int $month;
+    /** @var int */
     public int $year;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        
+        Statics::hydrate($this, $update);
     }
 
     /**
      * Describes the birthdate of a user.
-     * @param int|null $day Day of the user&#39;s birth; 1-31
-     * @param int|null $month Month of the user&#39;s birth; 1-12
-     * @param int|null $year <em>Optional</em>. Year of the user&#39;s birth
+     * @param int|null $day Day of the user's birth; 1-31
+     * @param int|null $month Month of the user's birth; 1-12
+     * @param int|null $year <em>Optional</em>. Year of the user's birth
      */
     public static function make(int $day = null, int $month = null, int $year = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -56,16 +49,37 @@ class Birthdate
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

@@ -12,8 +12,8 @@ use JSON\json;
  * @method self sticker(Sticker $value) The sticker that represents the gift
  * @method self star_count(int $value) The number of Telegram Stars that must be paid to send the sticker
  * @method self upgrade_star_count(int $value) <em>Optional</em>. The number of Telegram Stars that must be paid to upgrade the gift to a unique one
- * @method self is_premium(True $value) <em>Optional</em>. <em>True</em>, if the gift can only be purchased by Telegram Premium subscribers
- * @method self has_colors(True $value) <em>Optional</em>. <em>True</em>, if the gift can be used (after being upgraded) to customize a user&#39;s appearance
+ * @method self is_premium(bool $value) <em>Optional</em>. <em>True</em>, if the gift can only be purchased by Telegram Premium subscribers
+ * @method self has_colors(bool $value) <em>Optional</em>. <em>True</em>, if the gift can be used (after being upgraded) to customize a user's appearance
  * @method self total_count(int $value) <em>Optional</em>. The total number of gifts of this type that can be sent by all users; for limited gifts only
  * @method self remaining_count(int $value) <em>Optional</em>. The number of remaining gifts of this type that can be sent by all users; for limited gifts only
  * @method self personal_total_count(int $value) <em>Optional</em>. The total number of gifts of this type that can be sent by the bot; for limited gifts only
@@ -24,35 +24,36 @@ use JSON\json;
  */
 class Gift
 {
+    /** @var string */
     public string $id;
+    /** @var Sticker */
     public Sticker $sticker;
+    /** @var int */
     public int $star_count;
+    /** @var int */
     public int $upgrade_star_count;
-    public True $is_premium;
-    public True $has_colors;
+    /** @var bool */
+    public bool $is_premium;
+    /** @var bool */
+    public bool $has_colors;
+    /** @var int */
     public int $total_count;
+    /** @var int */
     public int $remaining_count;
+    /** @var int */
     public int $personal_total_count;
+    /** @var int */
     public int $personal_remaining_count;
+    /** @var GiftBackground */
     public GiftBackground $background;
+    /** @var int */
     public int $unique_gift_variant_count;
+    /** @var Chat */
     public Chat $publisher_chat;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['sticker'])) $this->sticker = new Sticker($update['sticker']);
-        if (isset($update['background'])) $this->background = new GiftBackground($update['background']);
-        if (isset($update['publisher_chat'])) $this->publisher_chat = new Chat($update['publisher_chat']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -61,8 +62,8 @@ class Gift
      * @param Sticker|null $sticker The sticker that represents the gift
      * @param int|null $star_count The number of Telegram Stars that must be paid to send the sticker
      * @param int|null $upgrade_star_count <em>Optional</em>. The number of Telegram Stars that must be paid to upgrade the gift to a unique one
-     * @param True|null $is_premium <em>Optional</em>. <em>True</em>, if the gift can only be purchased by Telegram Premium subscribers
-     * @param True|null $has_colors <em>Optional</em>. <em>True</em>, if the gift can be used (after being upgraded) to customize a user&#39;s appearance
+     * @param bool|null $is_premium <em>Optional</em>. <em>True</em>, if the gift can only be purchased by Telegram Premium subscribers
+     * @param bool|null $has_colors <em>Optional</em>. <em>True</em>, if the gift can be used (after being upgraded) to customize a user's appearance
      * @param int|null $total_count <em>Optional</em>. The total number of gifts of this type that can be sent by all users; for limited gifts only
      * @param int|null $remaining_count <em>Optional</em>. The number of remaining gifts of this type that can be sent by all users; for limited gifts only
      * @param int|null $personal_total_count <em>Optional</em>. The total number of gifts of this type that can be sent by the bot; for limited gifts only
@@ -71,10 +72,10 @@ class Gift
      * @param int|null $unique_gift_variant_count <em>Optional</em>. The total number of different unique gifts that can be obtained by upgrading the gift
      * @param Chat|null $publisher_chat <em>Optional</em>. Information about the chat that published the gift
      */
-    public static function make(string $id = null, Sticker $sticker = null, int $star_count = null, int $upgrade_star_count = null, True $is_premium = null, True $has_colors = null, int $total_count = null, int $remaining_count = null, int $personal_total_count = null, int $personal_remaining_count = null, GiftBackground $background = null, int $unique_gift_variant_count = null, Chat $publisher_chat = null): self
+    public static function make(string $id = null, Sticker $sticker = null, int $star_count = null, int $upgrade_star_count = null, bool $is_premium = null, bool $has_colors = null, int $total_count = null, int $remaining_count = null, int $personal_total_count = null, int $personal_remaining_count = null, GiftBackground $background = null, int $unique_gift_variant_count = null, Chat $publisher_chat = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -88,16 +89,37 @@ class Gift
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

@@ -8,7 +8,7 @@ use JSON\json;
 
 /**
  * This object represents a venue.
- * @method self location(Location $value) Venue location. Can&#39;t be a live location
+ * @method self location(Location $value) Venue location. Can't be a live location.
  * @method self title(string $value) Name of the venue
  * @method self address(string $value) Address of the venue
  * @method self foursquare_id(string $value) <em>Optional</em>. Foursquare identifier of the venue
@@ -18,32 +18,29 @@ use JSON\json;
  */
 class Venue
 {
+    /** @var Location */
     public Location $location;
+    /** @var string */
     public string $title;
+    /** @var string */
     public string $address;
+    /** @var string */
     public string $foursquare_id;
+    /** @var string */
     public string $foursquare_type;
+    /** @var string */
     public string $google_place_id;
+    /** @var string */
     public string $google_place_type;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['location'])) $this->location = new Location($update['location']);
+        Statics::hydrate($this, $update);
     }
 
     /**
      * This object represents a venue.
-     * @param Location|null $location Venue location. Can&#39;t be a live location
+     * @param Location|null $location Venue location. Can't be a live location.
      * @param string|null $title Name of the venue
      * @param string|null $address Address of the venue
      * @param string|null $foursquare_id <em>Optional</em>. Foursquare identifier of the venue
@@ -54,7 +51,7 @@ class Venue
     public static function make(Location $location = null, string $title = null, string $address = null, string $foursquare_id = null, string $foursquare_type = null, string $google_place_id = null, string $google_place_type = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -68,16 +65,37 @@ class Venue
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

@@ -7,7 +7,7 @@ use EasyTel\Telegram;
 use JSON\json;
 
 /**
- * Represents a <a href="https://core.telegram.org/bots/api#games">Game</a>.
+ * Represents a <a href="https://core.telegram.org/bots/api#game">Game</a>.
  * @method self type(string $value) Type of the result, must be <em>game</em>
  * @method self id(string $value) Unique identifier for this result, 1-64 bytes
  * @method self game_short_name(string $value) Short name of the game
@@ -15,28 +15,22 @@ use JSON\json;
  */
 class InlineQueryResultGame
 {
+    /** @var string */
     public string $type;
+    /** @var string */
     public string $id;
+    /** @var string */
     public string $game_short_name;
+    /** @var InlineKeyboardMarkup */
     public InlineKeyboardMarkup $reply_markup;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['reply_markup'])) $this->reply_markup = new InlineKeyboardMarkup($update['reply_markup']);
+        Statics::hydrate($this, $update);
     }
 
     /**
-     * Represents a <a href="https://core.telegram.org/bots/api#games">Game</a>.
+     * Represents a <a href="https://core.telegram.org/bots/api#game">Game</a>.
      * @param string|null $type Type of the result, must be <em>game</em>
      * @param string|null $id Unique identifier for this result, 1-64 bytes
      * @param string|null $game_short_name Short name of the game
@@ -45,7 +39,7 @@ class InlineQueryResultGame
     public static function make(string $type = null, string $id = null, string $game_short_name = null, InlineKeyboardMarkup $reply_markup = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -59,16 +53,37 @@ class InlineQueryResultGame
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

@@ -11,35 +11,31 @@ use JSON\json;
  * @method self id(string $value) Unique identifier for this query
  * @method self from(User $value) Sender
  * @method self message(MaybeInaccessibleMessage $value) <em>Optional</em>. Message sent by the bot with the callback button that originated the query
- * @method self inline_message_id(string $value) <em>Optional</em>. Identifier of the message sent via the bot in inline mode, that originated the query.
+ * @method self inline_message_id(string $value) <em>Optional</em>. Identifier of the message sent via the bot in inline mode, that originated the query
  * @method self chat_instance(string $value) Global identifier, uniquely corresponding to the chat to which the message with the callback button was sent. Useful for high scores in <a href="https://core.telegram.org/bots/api#games">games</a>.
  * @method self data(string $value) <em>Optional</em>. Data associated with the callback button. Be aware that the message originated the query can contain no callback buttons with this data.
- * @method self game_short_name(string $value) <em>Optional</em>. Short name of a <a href="https://core.telegram.org/bots/api#games">Game</a> to be returned, serves as the unique identifier for the game
+ * @method self game_short_name(string $value) <em>Optional</em>. Short name of a <a href="https://core.telegram.org/bots/api#game">Game</a> to be returned, serves as the unique identifier for the game
  */
 class CallbackQuery
 {
+    /** @var string */
     public string $id;
+    /** @var User */
     public User $from;
+    /** @var MaybeInaccessibleMessage */
     public MaybeInaccessibleMessage $message;
+    /** @var string */
     public string $inline_message_id;
+    /** @var string */
     public string $chat_instance;
+    /** @var string */
     public string $data;
+    /** @var string */
     public string $game_short_name;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['from'])) $this->from = new User($update['from']);
-        if (isset($update['message'])) $this->message = new MaybeInaccessibleMessage($update['message']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -47,15 +43,15 @@ class CallbackQuery
      * @param string|null $id Unique identifier for this query
      * @param User|null $from Sender
      * @param MaybeInaccessibleMessage|null $message <em>Optional</em>. Message sent by the bot with the callback button that originated the query
-     * @param string|null $inline_message_id <em>Optional</em>. Identifier of the message sent via the bot in inline mode, that originated the query.
+     * @param string|null $inline_message_id <em>Optional</em>. Identifier of the message sent via the bot in inline mode, that originated the query
      * @param string|null $chat_instance Global identifier, uniquely corresponding to the chat to which the message with the callback button was sent. Useful for high scores in <a href="https://core.telegram.org/bots/api#games">games</a>.
      * @param string|null $data <em>Optional</em>. Data associated with the callback button. Be aware that the message originated the query can contain no callback buttons with this data.
-     * @param string|null $game_short_name <em>Optional</em>. Short name of a <a href="https://core.telegram.org/bots/api#games">Game</a> to be returned, serves as the unique identifier for the game
+     * @param string|null $game_short_name <em>Optional</em>. Short name of a <a href="https://core.telegram.org/bots/api#game">Game</a> to be returned, serves as the unique identifier for the game
      */
     public static function make(string $id = null, User $from = null, MaybeInaccessibleMessage $message = null, string $inline_message_id = null, string $chat_instance = null, string $data = null, string $game_short_name = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -69,16 +65,37 @@ class CallbackQuery
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

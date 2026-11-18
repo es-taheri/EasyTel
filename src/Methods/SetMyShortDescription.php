@@ -5,48 +5,92 @@ namespace EasyTel\Methods;
 use EasyTel\Handler\Request;
 use EasyTel\Handler\Result;
 
-
 /**
+ * Use this method to change the bot's short description, which is shown on the bot's profile page and is sent together with the link when users share the bot. Returns <em>True</em> on success.
+ *
  * @method SetMyShortDescription short_description(string $value) New short description for the bot; 0-120 characters. Pass an empty string to remove the dedicated short description for the given language.
  * @method SetMyShortDescription language_code(string $value) A two-letter ISO 639-1 language code. If empty, the short description will be applied to all users for whose language there is no dedicated short description.
+ *
+ * @link https://core.telegram.org/bots/api#setmyshortdescription
  */
 class SetMyShortDescription
 {
     private Request $_request;
     private bool $_sent = false;
+    /** @var string New short description for the bot; 0-120 characters. Pass an empty string to remove the dedicated short description for the given language. */
     private string $short_description;
+    /** @var string A two-letter ISO 639-1 language code. If empty, the short description will be applied to all users for whose language there is no dedicated short description. */
     private string $language_code;
 
+    /**
+     * @param Request $request
+     */
     public function __construct(Request $request)
     {
         $this->_request = $request;
-        
     }
 
     public function __call(string $name, array $arguments)
     {
-        $this->{$name} = array_shift($arguments);
+        if (!property_exists($this, $name)) {
+            $this->_sent = true; // never send a half built request from __destruct()
+            throw new \BadMethodCallException(
+                sprintf('Unknown parameter "%s" for %s.', $name, static::class)
+            );
+        }
+
+        if ($arguments === []) {
+            $this->_sent = true;
+            throw new \InvalidArgumentException(
+                sprintf('Parameter "%s" of %s requires a value.', $name, static::class)
+            );
+        }
+
+        try {
+            $this->{$name} = array_shift($arguments);
+        } catch (\Throwable $e) {
+            $this->_sent = true; // the value did not fit: the request is invalid
+            throw $e;
+        }
+
         return $this;
     }
 
     public function _result(): Result
     {
         $parameters = [];
-        foreach ($this as $key => $value):
-            if (isset($this->{$key}) && !in_array($key, ['_request', '_result'])):
-                if (gettype($value) == 'object')
-                    $parameters[$key] = (fn() => ($this->_output()))->bindTo($value, $value)();
-                else
-                    $parameters[$key] = $value;
-            endif;
-        endforeach;
-        $r = new \ReflectionClass($this);
+
+        foreach ($this as $key => $value) {
+            if (str_starts_with($key, '_') || !isset($this->{$key})) {
+                continue;
+            }
+
+            if (is_object($value)) {
+                $parameters[$key] = method_exists($value, '_output')
+                    ? (fn() => $this->_output())->bindTo($value, $value)()
+                    : $value;
+            } else {
+                $parameters[$key] = $value;
+            }
+        }
+
+        $reflection = new \ReflectionClass($this);
         $this->_sent = true;
-        return $this->_request->send(lcfirst($r->getShortName()), $parameters);
+
+        return $this->_request->send(lcfirst($reflection->getShortName()), $parameters);
     }
 
     public function __destruct()
     {
-        if (!$this->_sent) $this->_result();
+        if ($this->_sent)
+            return;
+
+        // Fire-and-forget call from the destructor must never raise inside
+        // shutdown; the explicit _result() call is the error-reporting path.
+        try {
+            $this->_result();
+        } catch (\Throwable) {
+            // Ignored on purpose.
+        }
     }
 }

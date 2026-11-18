@@ -7,15 +7,31 @@ use EasyTel\Handler\Result;
 
 use EasyTel\Types\InputSticker;
 
+/**
+ * Use this method to replace an existing sticker in a sticker set with a new one. The method is equivalent to calling <a href="https://core.telegram.org/bots/api#deletestickerfromset">deleteStickerFromSet</a>, then <a href="https://core.telegram.org/bots/api#addstickertoset">addStickerToSet</a>, then <a href="https://core.telegram.org/bots/api#setstickerpositioninset">setStickerPositionInSet</a>. Returns <em>True</em> on success.
+ *
+ * @link https://core.telegram.org/bots/api#replacestickerinset
+ */
 class ReplaceStickerInSet
 {
     private Request $_request;
     private bool $_sent = false;
+    /** @var int User identifier of the sticker set owner */
     private int $user_id;
+    /** @var string Sticker set name */
     private string $name;
+    /** @var string File identifier of the replaced sticker */
     private string $old_sticker;
+    /** @var InputSticker A JSON-serialized object with information about the added sticker. If exactly the same sticker had already been added to the set, then the set remains unchanged. */
     private InputSticker $sticker;
 
+    /**
+     * @param Request $request
+     * @param int $user_id User identifier of the sticker set owner
+     * @param string $name Sticker set name
+     * @param string $old_sticker File identifier of the replaced sticker
+     * @param InputSticker $sticker A JSON-serialized object with information about the added sticker. If exactly the same sticker had already been added to the set, then the set remains unchanged.
+     */
     public function __construct(Request $request, int $user_id, string $name, string $old_sticker, InputSticker $sticker)
     {
         $this->_request = $request;
@@ -27,28 +43,65 @@ class ReplaceStickerInSet
 
     public function __call(string $name, array $arguments)
     {
-        $this->{$name} = array_shift($arguments);
+        if (!property_exists($this, $name)) {
+            $this->_sent = true; // never send a half built request from __destruct()
+            throw new \BadMethodCallException(
+                sprintf('Unknown parameter "%s" for %s.', $name, static::class)
+            );
+        }
+
+        if ($arguments === []) {
+            $this->_sent = true;
+            throw new \InvalidArgumentException(
+                sprintf('Parameter "%s" of %s requires a value.', $name, static::class)
+            );
+        }
+
+        try {
+            $this->{$name} = array_shift($arguments);
+        } catch (\Throwable $e) {
+            $this->_sent = true; // the value did not fit: the request is invalid
+            throw $e;
+        }
+
         return $this;
     }
 
     public function _result(): Result
     {
         $parameters = [];
-        foreach ($this as $key => $value):
-            if (isset($this->{$key}) && !in_array($key, ['_request', '_result'])):
-                if (gettype($value) == 'object')
-                    $parameters[$key] = (fn() => ($this->_output()))->bindTo($value, $value)();
-                else
-                    $parameters[$key] = $value;
-            endif;
-        endforeach;
-        $r = new \ReflectionClass($this);
+
+        foreach ($this as $key => $value) {
+            if (str_starts_with($key, '_') || !isset($this->{$key})) {
+                continue;
+            }
+
+            if (is_object($value)) {
+                $parameters[$key] = method_exists($value, '_output')
+                    ? (fn() => $this->_output())->bindTo($value, $value)()
+                    : $value;
+            } else {
+                $parameters[$key] = $value;
+            }
+        }
+
+        $reflection = new \ReflectionClass($this);
         $this->_sent = true;
-        return $this->_request->send(lcfirst($r->getShortName()), $parameters);
+
+        return $this->_request->send(lcfirst($reflection->getShortName()), $parameters);
     }
 
     public function __destruct()
     {
-        if (!$this->_sent) $this->_result();
+        if ($this->_sent)
+            return;
+
+        // Fire-and-forget call from the destructor must never raise inside
+        // shutdown; the explicit _result() call is the error-reporting path.
+        try {
+            $this->_result();
+        } catch (\Throwable) {
+            // Ignored on purpose.
+        }
     }
 }

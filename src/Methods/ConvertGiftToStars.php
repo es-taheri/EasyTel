@@ -5,15 +5,25 @@ namespace EasyTel\Methods;
 use EasyTel\Handler\Request;
 use EasyTel\Handler\Result;
 
-
-
+/**
+ * Converts a given regular gift to Telegram Stars. Requires the <em>can_convert_gifts_to_stars</em> business bot right. Returns <em>True</em> on success.
+ *
+ * @link https://core.telegram.org/bots/api#convertgifttostars
+ */
 class ConvertGiftToStars
 {
     private Request $_request;
     private bool $_sent = false;
+    /** @var string Unique identifier of the business connection */
     private string $business_connection_id;
+    /** @var string Unique identifier of the regular gift that should be converted to Telegram Stars */
     private string $owned_gift_id;
 
+    /**
+     * @param Request $request
+     * @param string $business_connection_id Unique identifier of the business connection
+     * @param string $owned_gift_id Unique identifier of the regular gift that should be converted to Telegram Stars
+     */
     public function __construct(Request $request, string $business_connection_id, string $owned_gift_id)
     {
         $this->_request = $request;
@@ -23,28 +33,65 @@ class ConvertGiftToStars
 
     public function __call(string $name, array $arguments)
     {
-        $this->{$name} = array_shift($arguments);
+        if (!property_exists($this, $name)) {
+            $this->_sent = true; // never send a half built request from __destruct()
+            throw new \BadMethodCallException(
+                sprintf('Unknown parameter "%s" for %s.', $name, static::class)
+            );
+        }
+
+        if ($arguments === []) {
+            $this->_sent = true;
+            throw new \InvalidArgumentException(
+                sprintf('Parameter "%s" of %s requires a value.', $name, static::class)
+            );
+        }
+
+        try {
+            $this->{$name} = array_shift($arguments);
+        } catch (\Throwable $e) {
+            $this->_sent = true; // the value did not fit: the request is invalid
+            throw $e;
+        }
+
         return $this;
     }
 
     public function _result(): Result
     {
         $parameters = [];
-        foreach ($this as $key => $value):
-            if (isset($this->{$key}) && !in_array($key, ['_request', '_result'])):
-                if (gettype($value) == 'object')
-                    $parameters[$key] = (fn() => ($this->_output()))->bindTo($value, $value)();
-                else
-                    $parameters[$key] = $value;
-            endif;
-        endforeach;
-        $r = new \ReflectionClass($this);
+
+        foreach ($this as $key => $value) {
+            if (str_starts_with($key, '_') || !isset($this->{$key})) {
+                continue;
+            }
+
+            if (is_object($value)) {
+                $parameters[$key] = method_exists($value, '_output')
+                    ? (fn() => $this->_output())->bindTo($value, $value)()
+                    : $value;
+            } else {
+                $parameters[$key] = $value;
+            }
+        }
+
+        $reflection = new \ReflectionClass($this);
         $this->_sent = true;
-        return $this->_request->send(lcfirst($r->getShortName()), $parameters);
+
+        return $this->_request->send(lcfirst($reflection->getShortName()), $parameters);
     }
 
     public function __destruct()
     {
-        if (!$this->_sent) $this->_result();
+        if ($this->_sent)
+            return;
+
+        // Fire-and-forget call from the destructor must never raise inside
+        // shutdown; the explicit _result() call is the error-reporting path.
+        try {
+            $this->_result();
+        } catch (\Throwable) {
+            // Ignored on purpose.
+        }
     }
 }

@@ -7,39 +7,31 @@ use EasyTel\Telegram;
 use JSON\json;
 
 /**
- * This object represent a user&#39;s profile pictures.
+ * This object represent a user's profile pictures.
  * @method self total_count(int $value) Total number of profile pictures the target user has
- * @method self photos(array $value) Requested profile pictures (in up to 4 sizes each)
+ * @method self photos(PhotoSize[][] $value) Requested profile pictures (in up to 4 sizes each)
  */
 class UserProfilePhotos
 {
+    /** @var int */
     public int $total_count;
+    /** @var PhotoSize[][] */
     public array $photos;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        
+        Statics::hydrate($this, $update);
     }
 
     /**
-     * This object represent a user&#39;s profile pictures.
+     * This object represent a user's profile pictures.
      * @param int|null $total_count Total number of profile pictures the target user has
-     * @param array|null $photos Requested profile pictures (in up to 4 sizes each)
+     * @param PhotoSize[][]|null $photos Requested profile pictures (in up to 4 sizes each)
      */
     public static function make(int $total_count = null, array $photos = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -53,16 +45,37 @@ class UserProfilePhotos
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }

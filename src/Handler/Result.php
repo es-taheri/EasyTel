@@ -17,12 +17,16 @@ class Result
     public bool $ok = false;
     private readonly string|object|array $response;
 
-    public function __construct(private readonly array $result)
+    public function __construct(
+        private readonly array $result, private readonly int $output = Telegram::OUTPUT_OBJECT
+    )
     {
-        $this->success = $result['success'];
-        if (!is_null($result['response'])):
+        $this->success = (bool) ($result['success'] ?? false);
+
+        if (!is_null($result['response'] ?? null)):
             $this->response = $result['response'];
-            $this->ok = json::to_object($result['response'])->ok;
+            $decoded = json::to_object($result['response']);
+            $this->ok = is_object($decoded) && isset($decoded->ok) && $decoded->ok === true;
         endif;
     }
 
@@ -35,8 +39,8 @@ class Result
         if ($this->success)
             return json::to_object([
                 'code' => $this->result['code'],
-                'header' => $this->result['header'],
-                'size' => $this->result['size'],
+                'header' => $this->result['header'] ?? [],
+                'size' => $this->result['size'] ?? null,
             ]);
         else
             return null;
@@ -44,12 +48,19 @@ class Result
 
     /**
      * Telegram bot api response
-     * @param int $type
-     * @return object{ok:true,result:object}|object{ok:false,error_code:int,description:string}|array|string|null
+     *
+     * A method that returns <em>True</em> (setWebhook, deleteMessage, ...) resolves
+     * to a boolean here, so the return type can not be narrowed.
+     *
+     * @param int|null $type Output format, defaults to the one given to {@see Telegram}
+     * @return object{ok:true,result:object}|object{ok:false,error_code:int,description:string}|array|string|bool|null
      */
-    public function response(int $type = Telegram::OUTPUT_OBJECT): object|array|string|null
+    public function response(?int $type = null): mixed
     {
-        return (isset($this->response)) ? Statics::output($this->response, $type) : null;
+        if (!isset($this->response))
+            return null;
+
+        return Statics::output($this->response, $type ?? $this->output);
     }
 
     /**
@@ -60,8 +71,8 @@ class Result
     {
         if (!$this->success)
             return json::to_object([
-                'code' => $this->result['code'],
-                'error' => $this->result['error'],
+                'code' => $this->result['code'] ?? 0,
+                'error' => $this->result['error'] ?? 'Unknown error',
             ]);
         else
             return null;

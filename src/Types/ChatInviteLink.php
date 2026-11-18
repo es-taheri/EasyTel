@@ -22,31 +22,32 @@ use JSON\json;
  */
 class ChatInviteLink
 {
+    /** @var string */
     public string $invite_link;
+    /** @var User */
     public User $creator;
+    /** @var bool */
     public bool $creates_join_request;
+    /** @var bool */
     public bool $is_primary;
+    /** @var bool */
     public bool $is_revoked;
+    /** @var string */
     public string $name;
+    /** @var int */
     public int $expire_date;
+    /** @var int */
     public int $member_limit;
+    /** @var int */
     public int $pending_join_request_count;
+    /** @var int */
     public int $subscription_period;
+    /** @var int */
     public int $subscription_price;
 
     public function __construct(array $update = [])
     {
-        $objects = array_keys($update);
-        $r = new \ReflectionClass(static::class);
-        foreach ($objects as $object):
-            if ($r->hasProperty($object)):
-                $prop = $r->getProperty($object);
-                $type = $prop->getType();
-                if (in_array(strtolower(trim($type)), ['string', 'true', 'false', 'bool', 'int', 'float', 'array', 'mixed']) || str_contains($type, '|'))
-                    $this->{$object} = $update[$object];
-            endif;
-        endforeach;
-        if (isset($update['creator'])) $this->creator = new User($update['creator']);
+        Statics::hydrate($this, $update);
     }
 
     /**
@@ -66,7 +67,7 @@ class ChatInviteLink
     public static function make(string $invite_link = null, User $creator = null, bool $creates_join_request = null, bool $is_primary = null, bool $is_revoked = null, string $name = null, int $expire_date = null, int $member_limit = null, int $pending_join_request_count = null, int $subscription_period = null, int $subscription_price = null): self
     {
         $args = get_defined_vars();
-        $updates = array_filter($args, fn($v) => isset($v));
+        $updates = array_filter($args, fn($v) => $v !== null);
         return new self($updates);
     }
 
@@ -80,16 +81,37 @@ class ChatInviteLink
     {
         $output = [];
         $r = new \ReflectionClass(static::class);
+        $union = $r->hasConstant('_UNION_BASE');
+
+        $normalize = function ($value) use (&$normalize) {
+            if (is_object($value) && method_exists($value, '_output'))
+                return (fn() => $this->_output(Telegram::OUTPUT_ARRAY))->bindTo($value, $value)();
+            if (is_array($value)) {
+                $items = [];
+                foreach ($value as $key => $item)
+                    $items[$key] = $normalize($item);
+                return $items;
+            }
+            return $value;
+        };
+
         foreach ($r->getProperties(\ReflectionProperty::IS_PUBLIC) as $property):
             $name = $property->getName();
-            if (isset($this->{$name})):
-                $value = $property->getValue($this);
-                $property_type = $property->getType();
-                if ($property_type == 'object')
-                    $output[$name] = (fn() => ($this->_output($type)))->bindTo($value, $value)();
-                else
-                    $output[$name] = $value;
+            if (!isset($this->{$name}))
+                continue;
+
+            $raw = $property->getValue($this);
+            $value = $normalize($raw);
+
+            // A union base variant property represents the payload itself, so
+            // its fields replace the variant key.
+            if ($union && is_object($raw) && is_array($value)
+                && $name === strtolower((new \ReflectionClass($raw))->getShortName())):
+                $output += $value;
+                continue;
             endif;
+
+            $output[$name] = $value;
         endforeach;
         return Statics::output($output, $type);
     }
